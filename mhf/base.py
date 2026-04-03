@@ -32,7 +32,7 @@ class MHFMetadata:
         return self.decomposed_num_params / self.original_num_params
     
     @property
-    def compression_factor(self) -> float":
+    def compression_factor(self) -> float:
         """Compression factor (original / decomposed)"""
         return self.original_num_params / max(1, self.decomposed_num_params)
     

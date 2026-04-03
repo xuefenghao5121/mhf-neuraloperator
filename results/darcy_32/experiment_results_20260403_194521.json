@@ -1,0 +1,58 @@
+{
+  "timestamp": "2026-04-03T19:45:21.994241",
+  "config": {
+    "dataset": "darcy_32",
+    "epochs": 30,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "seed": 42,
+    "resolution": 32,
+    "hidden_channels": 32,
+    "n_layers": 3,
+    "n_modes": [
+      16,
+      16
+    ],
+    "n_heads": 4,
+    "mhf_rank": 8
+  },
+  "device": "cpu",
+  "test_configs": [
+    {
+      "name": "Baseline (\u539f\u59cb TFNO)",
+      "variant": "baseline",
+      "description": "\u539f\u59cb TFNO\uff0c\u4e0d\u5e26 MHF \u548c CoDA"
+    },
+    {
+      "name": "MHF (\u591a\u5934\u5206\u89e3)",
+      "variant": "mhf",
+      "description": "\u5e26\u591a\u5934\u5206\u89e3\uff0c\u4e0d\u5e26 CoDA"
+    },
+    {
+      "name": "MHF + CoDA (\u8de8\u5934\u6ce8\u610f\u529b)",
+      "variant": "mhf_coda",
+      "description": "\u591a\u5934\u5206\u89e3 + \u8de8\u5934\u6ce8\u610f\u529b"
+    }
+  ],
+  "results": {
+    "Baseline (\u539f\u59cb TFNO)": {
+      "error": "ReduceLROnPlateau.__init__() got an unexpected keyword argument 'verbose'",
+      "name": "Baseline (\u539f\u59cb TFNO)",
+      "variant": "baseline",
+      "description": "\u539f\u59cb TFNO\uff0c\u4e0d\u5e26 MHF \u548c CoDA"
+    },
+    "MHF (\u591a\u5934\u5206\u89e3)": {
+      "error": "ReduceLROnPlateau.__init__() got an unexpected keyword argument 'verbose'",
+      "name": "MHF (\u591a\u5934\u5206\u89e3)",
+      "variant": "mhf",
+      "description": "\u5e26\u591a\u5934\u5206\u89e3\uff0c\u4e0d\u5e26 CoDA"
+    },
+    "MHF + CoDA (\u8de8\u5934\u6ce8\u610f\u529b)": {
+      "error": "ReduceLROnPlateau.__init__() got an unexpected keyword argument 'verbose'",
+      "name": "MHF + CoDA (\u8de8\u5934\u6ce8\u610f\u529b)",
+      "variant": "mhf_coda",
+      "description": "\u591a\u5934\u5206\u89e3 + \u8de8\u5934\u6ce8\u610f\u529b"
+    }
+  },
+  "experiment_time": 0.592869758605957
+}

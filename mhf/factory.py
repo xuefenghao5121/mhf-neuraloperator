@@ -10,17 +10,23 @@ import torch.nn as nn
 from neuralop.models import (
     FNO,
     TFNO,
-    SFNO,
     UNO,
-    UQNO,
-    FNOGNO,
-    GINO,
-    CODANO,
-    RNO,
-    LocalNO,
-    OTNO,
     get_model,
 )
+
+# 尝试导入其他模型（可能不可用）
+try:
+    from neuralop.models import SFNO, UQNO, FNOGNO, GINO, CODANO, RNO, LocalNO, OTNO
+except ImportError:
+    # 如果不可用，定义为 None
+    SFNO = None
+    UQNO = None
+    FNOGNO = None
+    GINO = None
+    CODANO = None
+    RNO = None
+    LocalNO = None
+    OTNO = None
 
 from .spectral_mhf import SpectralConvMHF
 from ..models.fno_mhf import MHFNO, MHFTFNO
