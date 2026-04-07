@@ -99,27 +99,32 @@ class SphericalConvMHF(nn.Module):
             self.max_degree = max_degree
         
         # Initialize spherical harmonic transforms
+        # Note: hard_cutoff parameter not supported in current torch-harmonics
         self.sht = RealSHT(
             nlat=self.nlat,
             nlon=self.nlon,
             lmax=self.max_degree,
             grid=grid_type,
             norm=norm,
-            hard_cutoff=hard_cutoff
         )
-        
+
         self.isht = InverseRealSHT(
             nlat=self.nlat,
             nlon=self.nlon,
             lmax=self.max_degree,
             grid=grid_type,
             norm=norm,
-            hard_cutoff=hard_cutoff
         )
         
         # Number of spectral coefficients per channel
-        # The number of real spherical harmonic coefficients up to degree lmax is (lmax + 1)^2
-        self.num_coeffs = (self.max_degree + 1) ** 2
+        # For RealSHT, the output shape depends on the implementation
+        # We'll calculate it based on actual SHT output
+        test_input = torch.randn(self.nlat, self.nlon)
+        test_output = self.sht(test_input)
+        # Store the number of complex coefficients (before stacking real/imag)
+        self.num_coeffs_complex = test_output.numel()
+        # But num_coeffs should match the flattened real representation
+        self.num_coeffs = test_output.numel() * 2  # Real + Imaginary parts
         
         # Initialize weight for spectral domain
         # Shape: [in_channels, out_channels, num_coeffs]
@@ -163,12 +168,12 @@ class SphericalConvMHF(nn.Module):
     
     def transform_to_spectral(self, x: torch.Tensor) -> torch.Tensor:
         """Transform spatial input to spectral domain using SHT
-        
+
         Parameters
         ----------
         x : torch.Tensor
             Spatial domain input, shape [B, in_channels, nlat, nlon]
-        
+
         Returns
         -------
         torch.Tensor
@@ -177,44 +182,59 @@ class SphericalConvMHF(nn.Module):
         B, C, nlat, nlon = x.shape
         assert nlat == self.nlat and nlon == self.nlon, \
             f"Input grid shape ({nlat}, {nlon}) doesn't match expected ({self.nlat}, {self.nlon})"
-        
+
         # Reshape for SHT: [B*C, nlat, nlon]
         x_flat = x.reshape(B * C, nlat, nlon)
-        
-        # Apply spherical harmonic transform
-        x_spec = self.sht(x_flat)  # [B*C, num_coeffs]
-        
+
+        # Apply spherical harmonic transform (returns complex tensor)
+        x_spec_complex = self.sht(x_flat)
+
+        # Convert complex to real (stack real and imaginary parts)
+        x_spec_real = torch.stack([x_spec_complex.real, x_spec_complex.imag], dim=-1)
+        # x_spec_real shape: [B*C, ..., 2]
+
+        # Flatten the spatial dimensions
+        x_spec_flat = x_spec_real.reshape(B * C, -1)
+
         # Reshape back: [B, C, num_coeffs]
-        x_spec = x_spec.reshape(B, C, self.num_coeffs)
-        
+        # num_coeffs should match the flattened real representation
+        x_spec = x_spec_flat.reshape(B, C, -1)
+
         return x_spec
     
     def transform_to_spatial(self, x_spec: torch.Tensor) -> torch.Tensor:
         """Transform spectral coefficients back to spatial domain using inverse SHT
-        
+
         Parameters
         ----------
         x_spec : torch.Tensor
             Spectral domain coefficients, shape [B, out_channels, num_coeffs]
-        
+
         Returns
         -------
         torch.Tensor
             Spatial domain output, shape [B, out_channels, nlat, nlon]
         """
         B, C, num_coeffs = x_spec.shape
-        assert num_coeffs == self.num_coeffs, \
-            f"Number of coefficients ({num_coeffs}) doesn't match expected ({self.num_coeffs})"
-        
+
         # Reshape for ISHT: [B*C, num_coeffs]
-        x_spec_flat = x_spec.reshape(B * C, num_coeffs)
-        
+        x_spec_flat = x_spec.reshape(B * C, -1)
+
+        # Reshape to original SHT output shape (complex)
+        # The SHT output was complex with shape [lmax, lmax+1]
+        # We stored real and imaginary parts
+        x_spec_complex = torch.view_as_complex(
+            x_spec_flat.reshape(B * C, -1, 2).contiguous()
+        )
+        # Now reshape to [B*C, lmax, lmax+1]
+        x_spec_complex = x_spec_complex.reshape(B * C, self.max_degree, self.max_degree + 1)
+
         # Apply inverse spherical harmonic transform
-        x = self.isht(x_spec_flat)  # [B*C, nlat, nlon]
-        
+        x = self.isht(x_spec_complex)  # [B*C, nlat, nlon]
+
         # Reshape back: [B, C, nlat, nlon]
         x = x.reshape(B, C, self.nlat, self.nlon)
-        
+
         return x
     
     def spectral_convolution(self, x_spec: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
