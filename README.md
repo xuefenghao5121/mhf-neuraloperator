@@ -80,6 +80,8 @@ pip install -e .
 
 ## 快速开始
 
+### MHF-FNO (标准傅里叶神经算子)
+
 ```python
 import torch
 from mhf import MHFNO
@@ -99,6 +101,99 @@ model = MHFNO(
 # 前向传播
 x = torch.randn(1, 1, 32, 32)
 out = model(x)
+```
+
+### MHF-SFNO (球面傅里叶神经算子)
+
+MHF-SFNO 针对球面傅里叶神经算子进行优化，适用于地球大气科学、天体物理等球面域问题。
+
+**依赖安装**：
+```bash
+pip install torch-harmonics
+```
+
+**基本用法**：
+```python
+import torch
+from models.sfno_mhf import MHSFNO
+
+# 创建MHF优化的SFNO模型
+model = MHSFNO(
+    grid_shape=(64, 128),  # 球面网格 (nlat, nlon)
+    in_channels=3,
+    out_channels=3,
+    hidden_channels=64,
+    n_layers=4,
+    max_degree=20,          # 最大球面谐波阶数
+    mhf_rank=8,            # MHF分解秩
+    mhf_factorization="tucker",
+    use_coda=False,        # 可选: 启用CoDA优化
+)
+
+# 前向传播 (球面数据)
+x = torch.randn(1, 3, 64, 128)  # [B, C, nlat, nlon]
+out = model(x)
+
+# 执行MHF分解并获取压缩统计
+model.decompose()
+stats = model.get_compression_stats()
+print(f"压缩比: {stats['overall_compression_ratio']:.2%}")
+print(f"压缩倍数: {stats['overall_compression_factor']:.2f}x")
+```
+
+**多分辨率层次自定义**：
+```python
+# 自定义分辨率层次（基于球面谐波阶数）
+mhf_resolutions = [9, 25, 81, 225, 441]  # (degree+1)^2
+
+model = MHSFNO(
+    grid_shape=(64, 128),
+    in_channels=3,
+    out_channels=3,
+    hidden_channels=64,
+    n_layers=4,
+    max_degree=20,
+    mhf_rank=[4, 6, 8, 12, 16],  # 不同层使用不同秩
+    mhf_resolutions=mhf_resolutions,
+    mhf_factorization="tucker",
+)
+```
+
+**从预训练模型转换**：
+```python
+from models.sfno_mhf import MHSFNO
+
+# 假设有原始 SFNO 模型
+original_model = load_original_sfno()
+
+# 转换为 MHF 优化版本
+mhf_model = MHSFNO.from_original(
+    original_model,
+    mhf_rank=8,
+    mhf_factorization="tucker",
+)
+
+# 保存压缩模型
+torch.save(mhf_model.state_dict(), "sfno_mhf_compressed.pth")
+```
+
+### 压缩预训练模型
+
+```python
+from mhf.factory import compress_pretrained_model
+
+# 假设有一个预训练的原始SFNO模型
+original_model = load_pretrained_sfno()
+
+# 使用MHF压缩
+compressed_model = compress_pretrained_model(
+    original_model,
+    mhf_rank=8,
+    factorization="tucker"
+)
+
+# 保存压缩后的模型
+torch.save(compressed_model.state_dict(), "sfno_mhf_compressed.pth")
 ```
 
 ## 性能对比
