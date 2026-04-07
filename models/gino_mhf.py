@@ -17,7 +17,7 @@ from mhf.base import BaseMHF
 from mhf.factorization import get_factorization
 
 
-class MHF_GINO(GINO, BaseMHF):
+class MHF_GINO(GINO):
     """MHF-optimized Geometry-Informed Neural Operator
     
     GINO combines FNO on regular grids with GNO on point clouds.
@@ -46,51 +46,65 @@ class MHF_GINO(GINO, BaseMHF):
         fno_activation: nn.Module = nn.GELU(),
         gno_mlp_hidden_dim: int = 256,
         gno_mlp_layers: int = 2,
+        gno_coord_dim: int = 3,
         # MHF parameters
         mhf_rank: Union[int, Dict[str, int]] = 8,
         mhf_factorization: str = "tucker",
         **kwargs,
     ):
-        # Initialize bases
-        BaseMHF.__init__(
-            self,
-            ranks=mhf_rank,
-            resolutions=[],
-            factorization=mhf_factorization,
-        )
-        
-        # GINO initialization - we'll use the base GINO constructor
-        # and then replace spectral convolutions with MHF versions
         from mhf.spectral_mhf import SpectralConvMHF
         
-        def spectral_conv_factory(*args, **factory_kwargs):
-            return SpectralConvMHF(
-                *args,
-                mhf_rank=self._get_rank_for_conv(args[2] if len(args) >= 3 else 16),
-                factorization=mhf_factorization,
-                **factory_kwargs,
-            )
-        
-        GINO.__init__(
-            self,
-            in_channels=in_channels,
-            out_channels=out_channels,
-            hidden_channels=hidden_channels,
-            n_layers=n_layers,
-            n_modes=n_modes,
-            in_radius=in_radius,
-            out_radius=out_radius,
-            fno_channel_mlp_expansion=fno_channel_mlp_expansion,
-            fno_activation=fno_activation,
-            gno_mlp_hidden_dim=gno_mlp_hidden_dim,
-            gno_mlp_layers=gno_mlp_layers,
-            SpectralConv=spectral_conv_factory,
-            **kwargs,
-        )
-        
+        # Set MHF attributes before GINO init because spectral_conv_factory needs them
         self._decomposed = False
         self.mhf_rank = mhf_rank
         self.mhf_factorization = mhf_factorization
+        
+        # Calculate resolutions based on n_modes - stored for MHF interface
+        if isinstance(n_modes, tuple):
+            self._resolutions = [2 * m for m in n_modes]
+        else:
+            self._resolutions = [2 * n_modes]
+        
+        # Factory for MHF spectral convolutions
+        def spectral_conv_factory(*args, **factory_kwargs):
+            # args: (in_channels, out_channels, n_modes)
+            n_modes_arg = args[2] if len(args) >= 3 else 16
+            # Remove any existing factorization from factory_kwargs
+            if 'factorization' in factory_kwargs:
+                del factory_kwargs['factorization']
+            return SpectralConvMHF(
+                *args,
+                mhf_rank=self._get_rank_for_conv(n_modes_arg),
+                factorization=self.mhf_factorization,
+                **factory_kwargs,
+            )
+        
+        # Convert parameter names to match base GINO
+        fno_hidden_channels = hidden_channels
+        fno_n_layers = n_layers
+        fno_n_modes = n_modes
+        in_gno_radius = in_radius
+        out_gno_radius = out_radius
+        
+        # Initialize GINO
+        super().__init__(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            fno_hidden_channels=fno_hidden_channels,
+            fno_n_layers=fno_n_layers,
+            fno_n_modes=fno_n_modes,
+            gno_coord_dim=gno_coord_dim,
+            in_gno_radius=in_gno_radius,
+            out_gno_radius=out_gno_radius,
+            fno_channel_mlp_expansion=fno_channel_mlp_expansion,
+            fno_non_linearity=fno_activation,
+            in_gno_channel_mlp_hidden_layers=[gno_mlp_hidden_dim, gno_mlp_hidden_dim] if gno_mlp_layers >= 2 else [gno_mlp_hidden_dim],
+            out_gno_channel_mlp_hidden_layers=[gno_mlp_hidden_dim * 2, gno_mlp_hidden_dim] if gno_mlp_layers >= 2 else [gno_mlp_hidden_dim],
+            gno_channel_mlp_non_linearity=fno_activation,
+            fno_conv_module=spectral_conv_factory,
+            gno_use_open3d=False,
+            **kwargs,
+        )
     
     def _get_rank_for_conv(self, n_modes: Union[int, Tuple[int, ...]]) -> int:
         """Get rank for a specific convolution based on modes count"""
@@ -124,9 +138,8 @@ class MHF_GINO(GINO, BaseMHF):
         
         def recompose_recursive(module: nn.Module):
             if isinstance(module, SpectralConvMHF):
-                full_weight = module.recompose()
-                with torch.no_grad():
-                    module.weight.copy_(full_weight)
+                # module.recompose() handles the case when weight doesn't exist
+                module.recompose()
             for child in module.children():
                 recompose_recursive(child)
         
@@ -232,9 +245,8 @@ class MHFFNOGNO(FNOGNO, BaseMHF):
         from mhf.spectral_mhf import SpectralConvMHF
         def recompose_r(module):
             if isinstance(module, SpectralConvMHF):
-                full = module.recompose()
-                with torch.no_grad():
-                    module.weight.copy_(full)
+                # module.recompose() handles the case when weight doesn't exist
+                module.recompose()
             for child in module.children():
                 recompose_r(child)
         recompose_r(self)
